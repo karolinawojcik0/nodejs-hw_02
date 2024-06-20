@@ -1,73 +1,81 @@
 const express = require('express');
 const router = express.Router();
-const {
-  listContacts,
-  getById,
-  addContact,
-  removeContact,
-  updateContact,
-} = require('../models/route');
-const { validateContact, validateContactUpdate } = require('../../validation/contactValidation');
+const { v4: uuidv4 } = require('uuid');
+const { listContacts, getById, addContact, removeContact, updateContact } = require('../../models/contacts');
+const Joi = require('joi');
 
-router.get('/', async (req, res) => {
-  try {
-    const contacts = await listContacts();
-    res.status(200).json(contacts);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+router.get('/', (req, res) => {
+  const contacts = listContacts();
+  res.json(contacts);
+});
+
+router.get('/:id', (req, res) => {
+  const { id } = req.params;
+  const contact = getById(id);
+
+  if (contact) {
+    res.json(contact);
+  } else {
+    res.status(404).json({ message: 'Not found' });
   }
 });
 
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const contact = await getById(id);
-    if (contact) {
-      res.status(200).json(contact);
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+router.post('/', (req, res) => {
+  const { name, email, phone } = req.body;
+
+  const schema = Joi.object({
+    name: Joi.string().required(),
+    email: Joi.string().email().required(),
+    phone: Joi.string().required()
+  });
+
+  const { error } = schema.validate({ name, email, phone });
+
+  if (error) {
+    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  }
+
+  const newContact = { id: uuidv4(), name, email, phone };
+  addContact(newContact);
+  res.status(201).json(newContact);
+});
+
+router.delete('/:id', (req, res) => {
+  const { id } = req.params;
+  const deleted = removeContact(id);
+
+  if (deleted) {
+    res.json({ message: 'Contact deleted' });
+  } else {
+    res.status(404).json({ message: 'Not found' });
   }
 });
 
-router.post('/', validateContact, async (req, res) => {
-  try {
-    const contact = await addContact(req.body);
-    res.status(201).json(contact);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+router.put('/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone } = req.body;
 
-router.delete('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await removeContact(id);
-    if (result) {
-      res.status(200).json({ message: 'contact deleted' });
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+  const schema = Joi.object({
+    name: Joi.string(),
+    email: Joi.string().email(),
+    phone: Joi.string()
+  }).or('name', 'email', 'phone');
 
-router.put('/:id', validateContactUpdate, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updatedContact = await updateContact(id, req.body);
-    if (updatedContact) {
-      res.status(200).json(updatedContact);
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  const { error } = schema.validate(req.body);
+
+  if (error) {
+    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  }
+
+  const updatedContact = updateContact(id, { name, email, phone });
+
+  if (updatedContact) {
+    res.json(updatedContact);
+  } else {
+    res.status(404).json({ message: 'Not found' });
   }
 });
 
 module.exports = router;
+
 
