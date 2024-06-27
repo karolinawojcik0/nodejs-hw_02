@@ -1,64 +1,50 @@
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const mongoose = require('mongoose');
 
-const contactsFilePath = path.join(__dirname, 'contacts.json');
+const contactSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Set name for contact'],
+  },
+  email: {
+    type: String,
+    required: true,
+  },
+  phone: {
+    type: String,
+    required: true,
+  },
+  favorite: {
+    type: Boolean,
+    default: false,
+  },
+});
 
-function readContactsFile() {
-  try {
-    const data = fs.readFileSync(contactsFilePath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading contacts file:', error);
-    return [];
-  }
+const Contact = mongoose.model('Contact', contactSchema);
+
+async function listContacts() {
+  return await Contact.find();
 }
 
-function writeContactsFile(data) {
-  try {
-    fs.writeFileSync(contactsFilePath, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('Error writing contacts file:', error);
-  }
+async function getById(id) {
+  return await Contact.findById(id);
 }
 
-function listContacts() {
-  return readContactsFile();
+async function addContact(contact) {
+  const newContact = new Contact(contact);
+  return await newContact.save();
 }
 
-function getById(id) {
-  const contacts = readContactsFile();
-  return contacts.find(contact => contact.id === id);
+async function removeContact(id) {
+  const result = await Contact.findByIdAndDelete(id);
+  return result !== null;
 }
 
-function addContact(contact) {
-  const contacts = readContactsFile();
-  const newContact = { id: uuidv4(), ...contact };
-  contacts.push(newContact);
-  writeContactsFile(contacts);
-  return newContact;
+async function updateContact(id, newData) {
+  return await Contact.findByIdAndUpdate(id, newData, { new: true });
 }
 
-function removeContact(id) {
-  let contacts = readContactsFile();
-  const initialLength = contacts.length;
-  contacts = contacts.filter(contact => contact.id !== id);
-  if (contacts.length !== initialLength) {
-    writeContactsFile(contacts);
-    return true;
-  }
-  return false;
-}
-
-function updateContact(id, newData) {
-  let contacts = readContactsFile();
-  const index = contacts.findIndex(contact => contact.id === id);
-  if (index !== -1) {
-    contacts[index] = { ...contacts[index], ...newData };
-    writeContactsFile(contacts);
-    return contacts[index];
-  }
-  return null;
+async function updateStatusContact(id, favorite) {
+  return await Contact.findByIdAndUpdate(id, { favorite }, { new: true });
 }
 
 module.exports = {
@@ -66,8 +52,10 @@ module.exports = {
   getById,
   addContact,
   removeContact,
-  updateContact
+  updateContact,
+  updateStatusContact
 };
+
 
 
 
