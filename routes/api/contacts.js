@@ -1,11 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { listContacts, getById, addContact, removeContact, updateContact } = require('../../models/contacts');
 const Joi = require('joi');
+const { listContacts, getById, addContact, removeContact, updateContact } = require('../../models/contacts');
 
-<<<<<<< Updated upstream
-=======
 const contactSchema = Joi.object({
   name: Joi.string().required(),
   email: Joi.string().email().required(),
@@ -18,8 +16,6 @@ const updateContactSchema = Joi.object({
   phone: Joi.string()
 }).or('name', 'email', 'phone');
 
-// Trasy
->>>>>>> Stashed changes
 router.get('/', (req, res) => {
   const contacts = listContacts();
   res.json(contacts);
@@ -37,21 +33,13 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, email, phone } = req.body;
-
-  const schema = Joi.object({
-    name: Joi.string().required(),
-    email: Joi.string().email().required(),
-    phone: Joi.string().required()
-  });
-
-  const { error } = schema.validate({ name, email, phone });
+  const { error } = contactSchema.validate(req.body);
 
   if (error) {
     return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
   }
 
-  const newContact = { id: uuidv4(), name, email, phone };
+  const newContact = { id: uuidv4(), ...req.body };
   addContact(newContact);
   res.status(201).json(newContact);
 });
@@ -69,21 +57,13 @@ router.delete('/:id', (req, res) => {
 
 router.put('/:id', (req, res) => {
   const { id } = req.params;
-  const { name, email, phone } = req.body;
-
-  const schema = Joi.object({
-    name: Joi.string(),
-    email: Joi.string().email(),
-    phone: Joi.string()
-  }).or('name', 'email', 'phone');
-
-  const { error } = schema.validate(req.body);
+  const { error } = updateContactSchema.validate(req.body);
 
   if (error) {
     return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
   }
 
-  const updatedContact = updateContact(id, { name, email, phone });
+  const updatedContact = updateContact(id, req.body);
 
   if (updatedContact) {
     res.json(updatedContact);
