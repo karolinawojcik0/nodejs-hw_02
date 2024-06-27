@@ -4,6 +4,22 @@ const { v4: uuidv4 } = require('uuid');
 const { listContacts, getById, addContact, removeContact, updateContact } = require('../../models/contacts');
 const Joi = require('joi');
 
+<<<<<<< Updated upstream
+=======
+const contactSchema = Joi.object({
+  name: Joi.string().required(),
+  email: Joi.string().email().required(),
+  phone: Joi.string().required()
+});
+
+const updateContactSchema = Joi.object({
+  name: Joi.string(),
+  email: Joi.string().email(),
+  phone: Joi.string()
+}).or('name', 'email', 'phone');
+
+// Trasy
+>>>>>>> Stashed changes
 router.get('/', (req, res) => {
   const contacts = listContacts();
   res.json(contacts);
