@@ -1,80 +1,137 @@
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
 const Joi = require('joi');
-const { listContacts, getById, addContact, removeContact, updateContact } = require('../../models/contacts');
+const {
+  listContacts,
+  getById,
+  addContact,
+  removeContact,
+  updateContact,
+  updateStatusContact,
+} = require('../../models/contacts');
 
-// Schematy walidacji
-const contactSchema = Joi.object({
-  name: Joi.string().required(),
-  email: Joi.string().email().required(),
-  phone: Joi.string().required()
-});
-
-const updateContactSchema = Joi.object({
+const baseSchema = Joi.object({
   name: Joi.string(),
   email: Joi.string().email(),
-  phone: Joi.string()
-}).or('name', 'email', 'phone');
-
-// Trasy
-router.get('/', (req, res) => {
-  const contacts = listContacts();
-  res.json(contacts);
+  phone: Joi.string(),
+  favorite: Joi.boolean(),
 });
 
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  const contact = getById(id);
-
-  if (contact) {
-    res.json(contact);
-  } else {
-    res.status(404).json({ message: 'Not found' });
-  }
-});
-
-router.post('/', (req, res) => {
-  const { error } = contactSchema.validate(req.body);
-
+const validate = (schema, req, res, next) => {
+  const { error } = schema.validate(req.body);
   if (error) {
     return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
   }
+  next();
+};
 
-  const newContact = { id: uuidv4(), ...req.body };
-  addContact(newContact);
-  res.status(201).json(newContact);
-});
+const checkRequiredFields = (fields, req, res, next) => {
+  for (const field of fields) {
+    if (!req.body[field]) {
+      return res.status(400).json({ message: `Validation error: missing required field ${field}` });
+    }
+  }
+  next();
+};
 
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  const deleted = removeContact(id);
-
-  if (deleted) {
-    res.json({ message: 'Contact deleted' });
-  } else {
-    res.status(404).json({ message: 'Not found' });
+router.get('/', async (req, res) => {
+  try {
+    const contacts = await listContacts();
+    res.json(contacts);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-router.put('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   const { id } = req.params;
-  const { error } = updateContactSchema.validate(req.body);
-
-  if (error) {
-    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  try {
+    const contact = await getById(id);
+    if (contact) {
+      res.json(contact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
+});
 
-  const updatedContact = updateContact(id, req.body);
+router.post('/', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => checkRequiredFields(['name', 'email', 'phone'], req, res, next), async (req, res) => {
+  try {
+    const newContact = await addContact(req.body);
+    res.status(201).json(newContact);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-  if (updatedContact) {
-    res.json(updatedContact);
-  } else {
-    res.status(404).json({ message: 'Not found' });
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const success = await removeContact(id);
+    if (success) {
+      res.json({ message: 'Contact deleted' });
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/:id', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => checkRequiredFields(['name', 'email', 'phone'], req, res, next), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const updatedContact = await updateContact(id, req.body);
+    if (updatedContact) {
+      res.json(updatedContact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => {
+  if (!req.body.name && !req.body.email && !req.body.phone) {
+    return res.status(400).json({ message: 'Validation error: at least one field (name, email, phone) must be provided' });
+  }
+  next();
+}, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const updatedContact = await updateContact(id, req.body);
+    if (updatedContact) {
+      res.json(updatedContact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/favorite', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => {
+  if (req.body.favorite === undefined) {
+    return res.status(400).json({ message: 'Validation error: missing field favorite' });
+  }
+  next();
+}, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const updatedContact = await updateStatusContact(id, req.body.favorite);
+    if (updatedContact) {
+      res.json(updatedContact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
 module.exports = router;
-
 
 
