@@ -25,13 +25,13 @@ const validate = (schema, req, res, next) => {
   next();
 };
 
-const schemas = {
-  create: baseSchema.fork(['name', 'email', 'phone'], field => field.required()),
-  update: baseSchema.fork(['name', 'email', 'phone'], field => field.required()),
-  partialUpdate: baseSchema.or('name', 'email', 'phone'),
-  updateFavorite: Joi.object({
-    favorite: Joi.boolean().required(),
-  }),
+const checkRequiredFields = (fields, req, res, next) => {
+  for (const field of fields) {
+    if (!req.body[field]) {
+      return res.status(400).json({ message: `Validation error: missing required field ${field}` });
+    }
+  }
+  next();
 };
 
 router.get('/', async (req, res) => {
@@ -57,7 +57,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', (req, res, next) => validate(schemas.create, req, res, next), async (req, res) => {
+router.post('/', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => checkRequiredFields(['name', 'email', 'phone'], req, res, next), async (req, res) => {
   try {
     const newContact = await addContact(req.body);
     res.status(201).json(newContact);
@@ -80,7 +80,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-router.put('/:id', (req, res, next) => validate(schemas.update, req, res, next), async (req, res) => {
+router.put('/:id', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => checkRequiredFields(['name', 'email', 'phone'], req, res, next), async (req, res) => {
   const { id } = req.params;
   try {
     const updatedContact = await updateContact(id, req.body);
@@ -94,7 +94,12 @@ router.put('/:id', (req, res, next) => validate(schemas.update, req, res, next),
   }
 });
 
-router.patch('/:id', (req, res, next) => validate(schemas.partialUpdate, req, res, next), async (req, res) => {
+router.patch('/:id', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => {
+  if (!req.body.name && !req.body.email && !req.body.phone) {
+    return res.status(400).json({ message: 'Validation error: at least one field (name, email, phone) must be provided' });
+  }
+  next();
+}, async (req, res) => {
   const { id } = req.params;
   try {
     const updatedContact = await updateContact(id, req.body);
@@ -108,7 +113,12 @@ router.patch('/:id', (req, res, next) => validate(schemas.partialUpdate, req, re
   }
 });
 
-router.patch('/:id/favorite', (req, res, next) => validate(schemas.updateFavorite, req, res, next), async (req, res) => {
+router.patch('/:id/favorite', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => {
+  if (req.body.favorite === undefined) {
+    return res.status(400).json({ message: 'Validation error: missing field favorite' });
+  }
+  next();
+}, async (req, res) => {
   const { id } = req.params;
   try {
     const updatedContact = await updateStatusContact(id, req.body.favorite);
@@ -123,6 +133,7 @@ router.patch('/:id/favorite', (req, res, next) => validate(schemas.updateFavorit
 });
 
 module.exports = router;
+
 
 
 
