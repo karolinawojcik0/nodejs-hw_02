@@ -7,10 +7,63 @@ const auth = require('../../middleware/auth');
 
 const router = express.Router();
 
-router.post('/signup', async (req, res) => { /* ... */ });
+// sign up
+router.post('/signup', async (req, res) => {
+  const { error } = validateSignup(req.body);
+  if (error) {
+    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  }
 
-router.post('/login', async (req, res) => { /* ... */ });
+  const { email, password } = req.body;
+  const userExists = await User.findOne({ email });
+  if (userExists) {
+    return res.status(409).json({ message: 'Email in use' });
+  }
 
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const user = new User({ email, password: hashedPassword });
+  await user.save();
+
+  return res.status(201).json({
+    user: {
+      email: user.email,
+      subscription: user.subscription,
+    },
+  });
+});
+
+//log in
+router.post('/login', async (req, res) => {
+  const { error } = validateLogin(req.body);
+  if (error) {
+    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  }
+
+  const { email, password } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.status(401).json({ message: 'Email or password is wrong' });
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  if (!isPasswordValid) {
+    return res.status(401).json({ message: 'Email or password is wrong' });
+  }
+
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  user.token = token;
+  await user.save();
+
+  return res.status(200).json({
+    token,
+    user: {
+      email: user.email,
+      subscription: user.subscription,
+    },
+  });
+});
+
+// log out
 router.get('/logout', auth, async (req, res) => {
   try {
     const user = req.user;
@@ -22,6 +75,7 @@ router.get('/logout', auth, async (req, res) => {
   }
 });
 
+// current
 router.get('/current', auth, async (req, res) => {
   try {
     const user = req.user;
@@ -35,5 +89,6 @@ router.get('/current', auth, async (req, res) => {
 });
 
 module.exports = router;
+
 
 
