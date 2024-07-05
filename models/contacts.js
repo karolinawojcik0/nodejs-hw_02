@@ -15,12 +15,14 @@ const contactSchema = new Schema({
   owner: {
     type: Schema.Types.ObjectId,
     ref: 'user',
+    required: true,
   },
 });
 
 const Contact = mongoose.model('contact', contactSchema);
 
 module.exports = Contact;
+
 
 
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
+const auth = require('../../middleware/auth');
 const {
   listContacts,
   getById,
@@ -11,13 +12,14 @@ const {
 } = require('../../models/contacts');
 
 const baseSchema = Joi.object({
-  name: Joi.string(),
-  email: Joi.string().email(),
-  phone: Joi.string(),
+  owner: Joi.string().required(),
+  name: Joi.string().required(),
+  email: Joi.string().email().required(),
+  phone: Joi.string().required(),
   favorite: Joi.boolean(),
 });
 
-const validate = (schema, req, res, next) => {
+const validateRequest = (schema) => (req, res, next) => {
   const { error } = schema.validate(req.body);
   if (error) {
     return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
@@ -25,7 +27,7 @@ const validate = (schema, req, res, next) => {
   next();
 };
 
-const checkRequiredFields = (fields, req, res, next) => {
+const checkRequiredFields = (fields) => (req, res, next) => {
   for (const field of fields) {
     if (!req.body[field]) {
       return res.status(400).json({ message: `Validation error: missing required field ${field}` });
@@ -57,18 +59,26 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => checkRequiredFields(['name', 'email', 'phone'], req, res, next), async (req, res) => {
+router.post('/', auth, validateRequest(baseSchema), checkRequiredFields(['name', 'email', 'phone']), async (req, res) => {
   try {
-    const newContact = await addContact(req.body);
+    const owner = req.user.id;
+    const newContact = await addContact({ ...req.body, owner });
     res.status(201).json(newContact);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   const { id } = req.params;
   try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
     const success = await removeContact(id);
     if (success) {
       res.json({ message: 'Contact deleted' });
@@ -80,9 +90,16 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-router.put('/:id', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => checkRequiredFields(['name', 'email', 'phone'], req, res, next), async (req, res) => {
+router.put('/:id', auth, validateRequest(baseSchema), checkRequiredFields(['name', 'email', 'phone']), async (req, res) => {
   const { id } = req.params;
   try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
     const updatedContact = await updateContact(id, req.body);
     if (updatedContact) {
       res.json(updatedContact);
@@ -94,14 +111,16 @@ router.put('/:id', (req, res, next) => validate(baseSchema, req, res, next), (re
   }
 });
 
-router.patch('/:id', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => {
-  if (!req.body.name && !req.body.email && !req.body.phone) {
-    return res.status(400).json({ message: 'Validation error: at least one field (name, email, phone) must be provided' });
-  }
-  next();
-}, async (req, res) => {
+router.patch('/:id', auth, validateRequest(baseSchema), async (req, res) => {
   const { id } = req.params;
   try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
     const updatedContact = await updateContact(id, req.body);
     if (updatedContact) {
       res.json(updatedContact);
@@ -113,15 +132,18 @@ router.patch('/:id', (req, res, next) => validate(baseSchema, req, res, next), (
   }
 });
 
-router.patch('/:id/favorite', (req, res, next) => validate(baseSchema, req, res, next), (req, res, next) => {
-  if (req.body.favorite === undefined) {
-    return res.status(400).json({ message: 'Validation error: missing field favorite' });
-  }
-  next();
-}, async (req, res) => {
+router.patch('/:id/favorite', auth, async (req, res) => {
   const { id } = req.params;
+  const { favorite } = req.body;
   try {
-    const updatedContact = await updateStatusContact(id, req.body.favorite);
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+    const updatedContact = await updateStatusContact(id, favorite);
     if (updatedContact) {
       res.json(updatedContact);
     } else {
@@ -133,5 +155,8 @@ router.patch('/:id/favorite', (req, res, next) => validate(baseSchema, req, res,
 });
 
 module.exports = router;
+
+
+
 
 
