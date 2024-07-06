@@ -98,7 +98,7 @@ router.put('/:id', auth, validateRequest(baseSchema), checkRequiredFields(['name
       return res.status(404).json({ message: 'Not found' });
     }
     if (contact.owner !== req.user.id) {
-      return res.status(403).json({ message: 'Unauthorized' });
+      return res.status(403).json({ message: 'Not found' });
     }
     const updatedContact = await updateContact(id, req.body);
     if (updatedContact) {
