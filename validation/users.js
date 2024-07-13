@@ -1,23 +1,20 @@
 const Joi = require('joi');
 
-const validateSignup = (data) => {
-  const schema = Joi.object({
-    email: Joi.string().email().required(),
-    password: Joi.string().min(6).required(),
-  });
-  return schema.validate(data);
+const validateRequest = (schema) => (req, res, next) => {
+  const { error } = schema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  }
+  next();
 };
 
-const validateLogin = (data) => {
-  const schema = Joi.object({
-    email: Joi.string().email().required(),
-    password: Joi.string().min(6).required(),
-  });
-  return schema.validate(data);
+const checkRequiredFields = (fields) => (req, res, next) => {
+  for (const field of fields) {
+    if (!req.body[field]) {
+      return res.status(400).json({ message: `Validation error: missing required field ${field}` });
+    }
+  }
+  next();
 };
 
-module.exports = {
-  validateSignup,
-  validateLogin,
-};
-
+module.exports = { validateRequest, checkRequiredFields };

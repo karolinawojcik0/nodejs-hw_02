@@ -1,161 +1,45 @@
 const express = require('express');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const router = express.Router();
-const upload = require('../../middleware/upload'); // import multer instance from upload.js
-const Joi = require('joi');
+const User = require('../../models/user');
+const upload = require('../../middleware/upload');
 const auth = require('../../middleware/auth');
-const {
-  listContacts,
-  getById,
-  addContact,
-  removeContact,
-  updateContact,
-  updateStatusContact,
-} = require('../../models/contacts');
+const { validateRequest, checkRequiredFields } = require('../../validation/users');
 
-const baseSchema = Joi.object({
-  owner: Joi.string().required(),
-  name: Joi.string().required(),
-  email: Joi.string().email().required(),
-  phone: Joi.string().required(),
-  favorite: Joi.boolean(),
-});
-
-const validateRequest = (schema) => (req, res, next) => {
-  const { error } = schema.validate(req.body);
-  if (error) {
-    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
-  }
-  next();
-};
-
-const checkRequiredFields = (fields) => (req, res, next) => {
-  for (const field of fields) {
-    if (!req.body[field]) {
-      return res.status(400).json({ message: `Validation error: missing required field ${field}` });
-    }
-  }
-  next();
-};
-
-router.get('/', async (req, res) => {
+// LOG IN
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const contacts = await listContacts();
-    res.json(contacts);
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    user.token = token;
+    await user.save();
+    res.json({ token, user: { email: user.email, subscription: user.subscription, avatarURL: user.avatarURL } });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-router.get('/:id', async (req, res) => {
-  const { id } = req.params;
+// AVATAR UPLOAD
+router.post('/avatar', auth, upload.single('avatar'), async (req, res) => {
+  const { id } = req.user;
   try {
-    const contact = await getById(id);
-    if (contact) {
-      res.json(contact);
-    } else {
-      res.status(404).json({ message: 'Not found' });
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.post('/', auth, upload.single('avatar'), validateRequest(baseSchema), checkRequiredFields(['name', 'email', 'phone']), async (req, res) => {
-  try {
-    const owner = req.user.id;
-    // Check req.file for uploaded avatar
-    if (req.file) {
-      // Handle file upload logic here
-      console.log('File uploaded:', req.file);
-    }
-
-    const newContact = await addContact({ ...req.body, owner });
-    res.status(201).json(newContact);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.delete('/:id', auth, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const contact = await getById(id);
-    if (!contact) {
-      return res.status(404).json({ message: 'Not found' });
-    }
-    if (contact.owner !== req.user.id) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-    const success = await removeContact(id);
-    if (success) {
-      res.json({ message: 'Contact deleted' });
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.put('/:id', auth, validateRequest(baseSchema), checkRequiredFields(['name', 'email', 'phone']), async (req, res) => {
-  const { id } = req.params;
-  try {
-    const contact = await getById(id);
-    if (!contact) {
-      return res.status(404).json({ message: 'Not found' });
-    }
-    if (contact.owner !== req.user.id) {
-      return res.status(403).json({ message: 'Not found' });
-    }
-    const updatedContact = await updateContact(id, req.body);
-    if (updatedContact) {
-      res.json(updatedContact);
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.patch('/:id', auth, validateRequest(baseSchema), async (req, res) => {
-  const { id } = req.params;
-  try {
-    const contact = await getById(id);
-    if (!contact) {
-      return res.status(404).json({ message: 'Not found' });
-    }
-    if (contact.owner !== req.user.id) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-    const updatedContact = await updateContact(id, req.body);
-    if (updatedContact) {
-      res.json(updatedContact);
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.patch('/:id/favorite', auth, async (req, res) => {
-  const { id } = req.params;
-  const { favorite } = req.body;
-  try {
-    const contact = await getById(id);
-    if (!contact) {
-      return res.status(404).json({ message: 'Not found' });
-    }
-    if (contact.owner !== req.user.id) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-    const updatedContact = await updateStatusContact(id, favorite);
-    if (updatedContact) {
-      res.json(updatedContact);
-    } else {
-      res.status(404).json({ message: 'Not found' });
-    }
+    const avatarPath = `/avatars/${req.file.filename}`;
+    user.avatarURL = avatarPath;
+    await user.save();
+    res.json({ avatarURL: user.avatarURL });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
