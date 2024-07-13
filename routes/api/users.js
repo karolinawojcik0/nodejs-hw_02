@@ -1,166 +1,164 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const gravatar = require('gravatar');
-const User = require('../../models/user');
-const { validateSignup, validateLogin } = require('../../validation/users');
-const auth = require('../../middleware/auth');
-const multer = require('multer');
-const jimp = require('jimp');
-const { v4: uuidv4 } = require('uuid');
-const path = require('path');
-const fs = require('fs/promises');
-
 const router = express.Router();
+const upload = require('../../middleware/upload'); // import multer instance from upload.js
+const Joi = require('joi');
+const auth = require('../../middleware/auth');
+const {
+  listContacts,
+  getById,
+  addContact,
+  removeContact,
+  updateContact,
+  updateStatusContact,
+} = require('../../models/contacts');
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '../../tmp'));
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const fileName = uuidv4() + ext;
-    cb(null, fileName);
-  },
+const baseSchema = Joi.object({
+  owner: Joi.string().required(),
+  name: Joi.string().required(),
+  email: Joi.string().email().required(),
+  phone: Joi.string().required(),
+  favorite: Joi.boolean(),
 });
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 1024 * 1024 * 2,
-  },
-  fileFilter: function (req, file, cb) {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
+const validateRequest = (schema) => (req, res, next) => {
+  const { error } = schema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
+  }
+  next();
+};
+
+const checkRequiredFields = (fields) => (req, res, next) => {
+  for (const field of fields) {
+    if (!req.body[field]) {
+      return res.status(400).json({ message: `Validation error: missing required field ${field}` });
+    }
+  }
+  next();
+};
+
+router.get('/', async (req, res) => {
+  try {
+    const contacts = await listContacts();
+    res.json(contacts);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const contact = await getById(id);
+    if (contact) {
+      res.json(contact);
     } else {
-      cb(new Error('Only image files are allowed!'), false);
+      res.status(404).json({ message: 'Not found' });
     }
-  },
-}).single('avatar');
-
-// sign up
-router.post('/signup', async (req, res) => {
-  const { error } = validateSignup(req.body);
-  if (error) {
-    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
-  }
-
-  const { email, password } = req.body;
-  const userExists = await User.findOne({ email });
-  if (userExists) {
-    return res.status(409).json({ message: 'Email in use' });
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  const avatarURL = gravatar.url(email, {
-    s: '200',
-    r: 'pg', 
-    d: 'identicon',
-  });
-
-  const user = new User({ email, password: hashedPassword, avatarURL });
-  await user.save();
-
-  return res.status(201).json({
-    user: {
-      email: user.email,
-      subscription: user.subscription,
-      avatarURL: user.avatarURL,
-    },
-  });
-});
-
-// log in
-router.post('/login', async (req, res) => {
-  const { error } = validateLogin(req.body);
-  if (error) {
-    return res.status(400).json({ message: `Validation error: ${error.details.map(detail => detail.message).join(', ')}` });
-  }
-
-  const { email, password } = req.body;
-  const user = await User.findOne({ email });
-  if (!user) {
-    return res.status(401).json({ message: 'Email or password is wrong' });
-  }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    return res.status(401).json({ message: 'Email or password is wrong' });
-  }
-
-  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  user.token = token;
-  await user.save();
-
-  return res.status(200).json({
-    token,
-    user: {
-      email: user.email,
-      subscription: user.subscription,
-      avatarURL: user.avatarURL,
-    },
-  });
-});
-
-// log out
-router.get('/logout', auth, async (req, res) => {
-  try {
-    const user = req.user;
-    user.token = null;
-    await user.save();
-    return res.status(204).send();
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// current
-router.get('/current', auth, async (req, res) => {
+router.post('/', auth, upload.single('avatar'), validateRequest(baseSchema), checkRequiredFields(['name', 'email', 'phone']), async (req, res) => {
   try {
-    const user = req.user;
-    return res.status(200).json({
-      email: user.email,
-      subscription: user.subscription,
-      avatarURL: user.avatarURL,
-    });
+    const owner = req.user.id;
+    // Check req.file for uploaded avatar
+    if (req.file) {
+      // Handle file upload logic here
+      console.log('File uploaded:', req.file);
+    }
+
+    const newContact = await addContact({ ...req.body, owner });
+    res.status(201).json(newContact);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-router.patch('/avatars', auth, async (req, res) => {
-  upload(req, res, async function (err) {
-    if (err instanceof multer.MulterError) {
-      return res.status(400).json({ message: 'File upload error' });
-    } else if (err) {
-      return res.status(500).json({ message: err.message });
+router.delete('/:id', auth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
     }
-
-    const file = req.file;
-    if (!file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
     }
-
-    try {
-      const image = await jimp.read(file.path);
-      await image.resize(250, 250).writeAsync(file.path);
-
-      const avatarFileName = uuidv4() + path.extname(file.originalname);
-
-      const newAvatarPath = path.join(__dirname, '../../public/avatars', avatarFileName);
-      await fs.rename(file.path, newAvatarPath);
-
-      const user = req.user;
-      user.avatarURL = `/avatars/${avatarFileName}`;
-      await user.save();
-
-      return res.status(200).json({ avatarURL: user.avatarURL });
-    } catch (error) {
-      console.error('Avatar processing error:', error);
-      return res.status(500).json({ message: 'Avatar processing error' });
+    const success = await removeContact(id);
+    if (success) {
+      res.json({ message: 'Contact deleted' });
+    } else {
+      res.status(404).json({ message: 'Not found' });
     }
-  });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/:id', auth, validateRequest(baseSchema), checkRequiredFields(['name', 'email', 'phone']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Not found' });
+    }
+    const updatedContact = await updateContact(id, req.body);
+    if (updatedContact) {
+      res.json(updatedContact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id', auth, validateRequest(baseSchema), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+    const updatedContact = await updateContact(id, req.body);
+    if (updatedContact) {
+      res.json(updatedContact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/favorite', auth, async (req, res) => {
+  const { id } = req.params;
+  const { favorite } = req.body;
+  try {
+    const contact = await getById(id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    if (contact.owner !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+    const updatedContact = await updateStatusContact(id, favorite);
+    if (updatedContact) {
+      res.json(updatedContact);
+    } else {
+      res.status(404).json({ message: 'Not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 module.exports = router;
