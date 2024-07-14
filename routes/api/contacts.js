@@ -155,8 +155,3 @@ router.patch('/:id/favorite', auth, async (req, res) => {
 });
 
 module.exports = router;
-
-
-
-
-
