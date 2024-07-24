@@ -8,8 +8,8 @@ import Joi from 'joi';
 import Jimp from 'jimp';
 import path from 'path';
 import gravatar from 'gravatar';
-import { nanoid } from 'nanoid'; // Dodaj ten import
-import main from '../../email.js'; // Import funkcji wysyłającej email
+import { nanoid } from 'nanoid';
+import main from '../../email.js';
 
 const router = express.Router();
 
@@ -55,7 +55,6 @@ router.post('/register', validateRequest(registerSchema), async (req, res) => {
     user.token = token;
     await user.save();
 
-    // Wysłanie emaila z linkiem do weryfikacji
     const verificationLink = `${process.env.BASE_URL}/api/verify/${verificationToken}`;
     await main(`<p>Click <a href="${verificationLink}">here</a> to verify your email</p>`, 'Email Verification', email);
 
