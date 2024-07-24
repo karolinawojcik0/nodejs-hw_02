@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const contactSchema = new Schema({
@@ -34,7 +34,7 @@ const addContact = async (contact) => {
 };
 
 const removeContact = async (id) => {
-  return await Contact.findByIdAndRemove(id);
+  return await Contact.findByIdAndDelete(id); // Zmienione na findByIdAndDelete
 };
 
 const updateContact = async (id, data) => {
@@ -45,7 +45,7 @@ const updateStatusContact = async (id, favorite) => {
   return await Contact.findByIdAndUpdate(id, { favorite }, { new: true });
 };
 
-module.exports = {
+export {
   listContacts,
   getById,
   addContact,
