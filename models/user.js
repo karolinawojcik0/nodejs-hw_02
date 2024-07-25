@@ -1,6 +1,8 @@
-const mongoose = require('mongoose');
+import gravatar from 'gravatar';
+import mongoose from 'mongoose';
+import { nanoid } from 'nanoid';
+
 const { Schema } = mongoose;
-const gravatar = require('gravatar');
 
 const userSchema = new Schema({
   password: {
@@ -26,9 +28,17 @@ const userSchema = new Schema({
     default: function() {
       return gravatar.url(this.email, { s: '250', d: 'retro' }, true);
     }
+  },
+  verify: {
+    type: Boolean,
+    default: false,
+  },
+  verificationToken: {
+    type: String,
+    default: () => nanoid(),
   }
 });
 
-const User = mongoose.model('user', userSchema);
+const User = mongoose.model('User', userSchema);
 
-module.exports = User;
+export default User;

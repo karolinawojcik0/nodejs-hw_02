@@ -1,14 +1,18 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+import bcrypt from 'bcrypt';
+import express from 'express';
+import gravatar from 'gravatar';
+import Joi from 'joi';
+import Jimp from 'jimp';
+import jwt from 'jsonwebtoken';
+import path from 'path';
+import { nanoid } from 'nanoid';
+
+import auth from '../../middleware/auth.js';
+import upload from '../../middleware/upload.js';
+import main from '../../email.js';
+import User from '../../models/user.js';
+
 const router = express.Router();
-const User = require('../../models/user');
-const upload = require('../../middleware/upload');
-const auth = require('../../middleware/auth');
-const Joi = require('joi');
-const Jimp = require('jimp');
-const path = require('path');
-const gravatar = require('gravatar');
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -38,10 +42,12 @@ router.post('/register', validateRequest(registerSchema), async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const verificationToken = nanoid();
     user = new User({
       email,
       password: hashedPassword,
-      avatarURL: gravatar.url(email, { s: '250', d: 'retro' }, true)
+      avatarURL: gravatar.url(email, { s: '250', d: 'retro' }, true),
+      verificationToken
     });
 
     await user.save();
@@ -49,6 +55,9 @@ router.post('/register', validateRequest(registerSchema), async (req, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
     user.token = token;
     await user.save();
+
+    const verificationLink = `${process.env.BASE_URL}/api/verify/${verificationToken}`;
+    await main(`<p>Click <a href="${verificationLink}">here</a> to verify your email</p>`, 'Email Verification', email);
 
     res.status(201).json({ token, user: { email: user.email, subscription: user.subscription, avatarURL: user.avatarURL } });
   } catch (error) {
@@ -63,6 +72,9 @@ router.post('/login', validateRequest(loginSchema), async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+    if (!user.verify) {
+      return res.status(400).json({ message: 'Email not verified' });
+    }
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
@@ -71,6 +83,30 @@ router.post('/login', validateRequest(loginSchema), async (req, res) => {
     user.token = token;
     await user.save();
     res.json({ token, user: { email: user.email, subscription: user.subscription, avatarURL: user.avatarURL } });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/verify', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ message: 'missing required field email' });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (user.verify) {
+      return res.status(400).json({ message: 'Verification has already been passed' });
+    }
+
+    const verificationLink = `${process.env.BASE_URL}/api/verify/${user.verificationToken}`;
+    await main(`<p>Click <a href="${verificationLink}">here</a> to verify your email</p>`, 'Email Verification', email);
+
+    res.status(200).json({ message: 'Verification email sent' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -106,4 +142,4 @@ router.patch('/avatars', auth, upload.single('avatar'), async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
