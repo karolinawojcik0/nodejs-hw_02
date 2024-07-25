@@ -1,15 +1,16 @@
-import express from 'express';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import User from '../../models/user.js';
-import upload from '../../middleware/upload.js';
-import auth from '../../middleware/auth.js';
+import express from 'express';
+import gravatar from 'gravatar';
 import Joi from 'joi';
 import Jimp from 'jimp';
+import jwt from 'jsonwebtoken';
 import path from 'path';
-import gravatar from 'gravatar';
 import { nanoid } from 'nanoid';
+
+import auth from '../../middleware/auth.js';
+import upload from '../../middleware/upload.js';
 import main from '../../email.js';
+import User from '../../models/user.js';
 
 const router = express.Router();
 

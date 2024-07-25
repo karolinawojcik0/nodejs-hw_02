@@ -34,7 +34,7 @@ const addContact = async (contact) => {
 };
 
 const removeContact = async (id) => {
-  return await Contact.findByIdAndDelete(id); // Zmienione na findByIdAndDelete
+  return await Contact.findByIdAndDelete(id);
 };
 
 const updateContact = async (id, data) => {

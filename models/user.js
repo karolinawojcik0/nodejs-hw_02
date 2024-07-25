@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import gravatar from 'gravatar';
+import mongoose from 'mongoose';
 import { nanoid } from 'nanoid';
 
 const { Schema } = mongoose;

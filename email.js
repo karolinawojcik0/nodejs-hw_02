@@ -15,13 +15,11 @@ const transporter = nodemailer.createTransport({
 
 const main = async (html, subject, to) => {
   const info = await transporter.sendMail({
-    from: '"Maddison Foo Koch 👻" <mycompany@gmail.com>',
+    from: '"Karolina Wójcik" <mycompany@gmail.com>',
     to,
     subject,
     html,
   });
-
-  console.log("Message sent: %s", info.messageId);
 };
 
 export default main;

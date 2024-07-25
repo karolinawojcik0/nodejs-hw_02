@@ -1,11 +1,12 @@
+import 'dotenv/config';
+import cors from 'cors';
 import express from 'express';
 import logger from 'morgan';
-import cors from 'cors';
-import 'dotenv/config';
 
 import contactsRouter from './routes/api/contacts.js';
 import usersRouter from './routes/api/users.js';
 import verifyRouter from './routes/api/verify.js';
+
 
 const app = express();
 

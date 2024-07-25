@@ -1,5 +1,6 @@
 import express from 'express';
 import Joi from 'joi';
+
 import auth from '../../middleware/auth.js';
 import {
   listContacts,
